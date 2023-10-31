@@ -7,7 +7,8 @@ using System.Net.NetworkInformation;
 using System.Threading.Tasks.Dataflow;
 using System.Reflection.Metadata.Ecma335;
 
-//completed - bot stuck in repetition
+//completed - bot stuck in repetition (thinkmove was only being augmented in local space)
+
 //- need piece square table for evaluation
 //    - need to encode piece square tables to reduce tokens used
 //    - need to decode the the encoded piece square tables and return values
@@ -246,13 +247,10 @@ public class MyBot : IChessBot
                 bestMove = move;
                 if (ply == 0) {
                     thinkmove = move;
-                    //Console.WriteLine(thinkmove);
                 }
             }
             board.UndoMove(move);
         }
-        //Console.WriteLine(ply);
-        //Console.WriteLine(thinkmove);
         return bestEval;
         
     }
@@ -260,8 +258,6 @@ public class MyBot : IChessBot
     public Move Think(Board board, Timer timer){ 
         Move thinkmove = Move.NullMove;
         int eval = Search(3, 0, -10000, 10000, board, ref thinkmove);
-        // Console.WriteLine("Eval: " + eval);
-        //Console.WriteLine("Move: " + thinkmove);
         return thinkmove.IsNull ? board.GetLegalMoves()[0]:thinkmove;
     }
 
