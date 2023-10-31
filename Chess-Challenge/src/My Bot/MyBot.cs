@@ -4,9 +4,13 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Net.NetworkInformation;
+using System.Threading.Tasks.Dataflow;
+using System.Reflection.Metadata.Ecma335;
 
-//- bot stuck in repetition
+//completed - bot stuck in repetition
 //- need piece square table for evaluation
+//    - need to encode piece square tables to reduce tokens used
+//    - need to decode the the encoded piece square tables and return values
 //- need alpha beta pruning
 //- need sorting of evaluated moves to speed up alpha beta pruning
 //- need iterative deepening
@@ -16,6 +20,8 @@ using System.Net.NetworkInformation;
 
 public class MyBot : IChessBot
 {
+    public Move thinkmove = Move.NullMove;
+
     // Piece values: null, pawn, knight, bishop, rook, queen, king
     int[] pieceValues = { 0, 100, 300, 300, 500, 900, 10000 }; // could be combined into piece square tables but only a small save in variables
 
@@ -160,14 +166,7 @@ public class MyBot : IChessBot
     int[][] eg_tables = { eg_pawn_table, eg_knight_table, eg_bishop_table, eg_rook_table, eg_queen_table, eg_king_table };
 
     int[] piece_phase = { 0, 0, 1, 1, 2, 4, 0 }; // 0 for king, 1 for pawn, 2 for knight and bishop, 4 for rook, 0 for queen
-    Move thinkmove = Move.NullMove;
-
-    public Move Think(Board board, Timer timer)
-    { 
-        Move thinkmove = Move.NullMove;
-        int eval = Search(3, 0, -10000, 10000, board);
-        return thinkmove.IsNull ? board.GetLegalMoves()[0] :thinkmove;
-    }
+    
 
     // Test if this move gives checkmate
     bool MoveIsCheckmate(Board board, Move move)
@@ -182,80 +181,52 @@ public class MyBot : IChessBot
         // To reduce number of tokens, evaluation could be done iterating over all pieces
         // This will also help to incorporate the piece square tables
         
-        int mg_white = 0;
-        int mg_black = 0;
-        int eg_white = 0;
-        int eg_black = 0;
+        int mg_eval = 0;
+        int eg_eval = 0;
         
         int gamePhase = 0;
 
-        // iterate over all pieces
-        for (int i = 1; i <= 6; i++) {
-            
-            ulong whitePieces = board.GetPieceBitboard((PieceType)i, true);
-            ulong blackPieces = board.GetPieceBitboard((PieceType)i, false);
-            
-            // iterate over all white pieces
-            while (whitePieces != 0) {
-                int square = BitboardHelper.ClearAndGetIndexOfLSB(ref whitePieces);
-                // convert square to correct index for piece square table where 63 is 7, 0 is 56 etc
-                //Console.WriteLine("white piece: " + i + " square: " + square);
-                square = ((7-((int)Math.Floor((double)square/8)))*8) + (square%8);
-                //Console.WriteLine("white piece: " + i + " square: " + square);
-
-                mg_white += pieceValues[i] + mg_tables[i-1][square];
-                eg_white += pieceValues[i] + eg_tables[i-1][square];
-                gamePhase += piece_phase[i];
-                //Console.WriteLine("mg_white: " + (pieceValues[i]+mg_tables[i-1][square]) + " eg_white: " + (pieceValues[i] + eg_tables[i-1][square]));
+        // iterate over white and black pieces
+        foreach (bool colour in new[] {true, false}) {
+            // iterate over all pieces
+            for (int i = 1; i <= 6; i++) {
                 
+                ulong evalPieces = board.GetPieceBitboard((PieceType)i, colour);
+                
+                // iterate over all eval pieces
+                while (evalPieces != 0) {
+                    int square = BitboardHelper.ClearAndGetIndexOfLSB(ref evalPieces);
+                    // convert square to correct index for piece square table where 63 is 7, 0 is 56 etc for white
+                    // and 63 is 56, 0 is 7 etc for black
+                    // currently only needed as piece square tables are not encoded and in wrong order
+                    if (colour)
+                        square = ((7-((int)Math.Floor((double)square/8)))*8) + (square%8);
+                    else
+                        square = ((int)Math.Floor((double)square/8)*8) + (7-(square%8));
+
+
+                    mg_eval += pieceValues[i] + mg_tables[i-1][square];
+                    eg_eval += pieceValues[i] + eg_tables[i-1][square];
+                    gamePhase += piece_phase[i];
+                    
+                }            
+
             }
-
-            // iterate over all black pieces
-            while (blackPieces != 0) {
-                int square = BitboardHelper.ClearAndGetIndexOfLSB(ref blackPieces);
-                // convert square to correct index for piece square table where 63 is 7, 0 is 56 etc
-                //Console.WriteLine("black piece: " + i + " square: " + square);
-                square = ((7-((int)Math.Floor((double)square/8)))*8) + (square%8);
-                //Console.WriteLine("black piece: " + i + " square: " + square);
-
-                mg_black += pieceValues[i] + mg_tables[i-1][square];
-                eg_black += pieceValues[i] + eg_tables[i-1][square];
-                gamePhase += piece_phase[i];
-                //Console.WriteLine("mg_black: " + (pieceValues[i]+mg_tables[i-1][square]) + " eg_black: " + (pieceValues[i] + eg_tables[i-1][square]));
-            }
-
-            
-
+            mg_eval = -mg_eval; 
+            eg_eval = -eg_eval;
         }
+        return (mg_eval * gamePhase + eg_eval * (24 - gamePhase)) / 24 * (board.IsWhiteToMove ? 1 : -1);
 
-        int whiteEval = CountMaterial (board, true);
-        int blackEval = CountMaterial (board, false);
-        
-        int evaluation = whiteEval - blackEval;
-
-        int perspective = board.IsWhiteToMove ? 1 : -1;
-        return evaluation * perspective;
     }
 
-    int CountMaterial (Board board, bool colour) {
-        int material = 0;
-        material += board.GetPieceList(PieceType.Pawn, colour).Count * pieceValues[(int)PieceType.Pawn];
-        material += board.GetPieceList(PieceType.Knight, colour).Count * pieceValues[(int)PieceType.Knight];
-        material += board.GetPieceList(PieceType.Bishop, colour).Count * pieceValues[(int)PieceType.Bishop];
-        material += board.GetPieceList(PieceType.Rook, colour).Count * pieceValues[(int)PieceType.Rook];
-        material += board.GetPieceList(PieceType.Queen, colour).Count * pieceValues[(int)PieceType.Queen];
 
-        return material;
-    }
-
-    int Search(int depth, int ply, int alpha, int beta, Board board){
-        
+    public int Search(int depth, int ply, int alpha, int beta, Board board, ref Move thinkmove){
         if (ply > 0 && board.IsRepeatedPosition()) {
             return 0;
         }
 
         if (depth == 0) {
-            return Evaluate(board);
+            return Evaluate(board);  
         }
 
         Move[] allMoves = board.GetLegalMoves();
@@ -265,21 +236,33 @@ public class MyBot : IChessBot
             }
             return 0;
         }
-
         int bestEval = -10000;
         Move bestMove = Move.NullMove;
         foreach(Move move in allMoves){
             board.MakeMove(move);
-            int eval = -Search(depth - 1, ply + 1, -beta, -alpha, board);
+            int eval = -Search(depth - 1, ply + 1, -beta, -alpha, board, ref thinkmove);
             if (eval > bestEval){
                 bestEval = eval;
                 bestMove = move;
-                if (ply == 0) thinkmove = move;
+                if (ply == 0) {
+                    thinkmove = move;
+                    //Console.WriteLine(thinkmove);
+                }
             }
             board.UndoMove(move);
         }
-
+        //Console.WriteLine(ply);
+        //Console.WriteLine(thinkmove);
         return bestEval;
+        
     }
 
+    public Move Think(Board board, Timer timer){ 
+        Move thinkmove = Move.NullMove;
+        int eval = Search(3, 0, -10000, 10000, board, ref thinkmove);
+        // Console.WriteLine("Eval: " + eval);
+        //Console.WriteLine("Move: " + thinkmove);
+        return thinkmove.IsNull ? board.GetLegalMoves()[0]:thinkmove;
     }
+
+}
