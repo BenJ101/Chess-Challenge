@@ -1,19 +1,16 @@
-﻿using System.Runtime.InteropServices;
-using ChessChallenge.API;
+﻿using ChessChallenge.API;
 using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.Net.NetworkInformation;
-using System.Threading.Tasks.Dataflow;
-using System.Reflection.Metadata.Ecma335;
 
-//completed - bot stuck in repetition (thinkmove was only being augmented in local space)
+
+// Completed - bot stuck in repetition (thinkmove was only being augmented in local space)
+//              still some 50 move rules endings being achieved
+// Completed - need alpha beta pruning (using negmax, achieve near double depth)
+// Completed - need sorting of evaluated moves to speed up alpha beta pruning
 
 //- need piece square table for evaluation
 //    - need to encode piece square tables to reduce tokens used
 //    - need to decode the the encoded piece square tables and return values
-//- need alpha beta pruning
-//- need sorting of evaluated moves to speed up alpha beta pruning
+//- need transpoistion table to help speed up evaluation of positions and reduce repetition
 //- need iterative deepening
 //- need Quiescence search to avoid horizon effect
 //- end game evaluations to reweight material
@@ -169,15 +166,6 @@ public class MyBot : IChessBot
     int[] piece_phase = { 0, 0, 1, 1, 2, 4, 0 }; // 0 for king, 1 for pawn, 2 for knight and bishop, 4 for rook, 0 for queen
     
 
-    // Test if this move gives checkmate
-    bool MoveIsCheckmate(Board board, Move move)
-    {
-        board.MakeMove(move);
-        bool isMate = board.IsInCheckmate();
-        board.UndoMove(move);
-        return isMate;
-    }
-
     int Evaluate(Board board) {
         // To reduce number of tokens, evaluation could be done iterating over all pieces
         // This will also help to incorporate the piece square tables
@@ -222,26 +210,51 @@ public class MyBot : IChessBot
 
 
     public int Search(int depth, int ply, int alpha, int beta, Board board, ref Move thinkmove){
+        // if draw by repetition
         if (ply > 0 && board.IsRepeatedPosition()) {
             return 0;
         }
 
+        // if bottom of search
         if (depth == 0) {
             return Evaluate(board);  
         }
 
-        Move[] allMoves = board.GetLegalMoves();
-        if (allMoves.Length == 0) {
+        Move[] moves = board.GetLegalMoves();
+
+        // if checkmate or stalemate
+        if (moves.Length == 0) {
             if (board.IsInCheck()) {
                 return -10000;
             }
             return 0;
         }
+        
         int bestEval = -10000;
         Move bestMove = Move.NullMove;
-        foreach(Move move in allMoves){
+
+        // Score moves to improve pruning
+        int[] scores = new int[moves.Length];
+        for(int i = 0; i<moves.Length; i++){
+            Move move = moves[i];
+            if(move.IsCapture){
+                scores[i] = 100*(int)move.CapturePieceType - (int)move.MovePieceType;
+            }
+        }
+        
+        for(int i = 0; i < moves.Length; i++){;    
+            
+            // sort moves by captures to promote pruning and reduce the time spent evaluating potentially worse positions
+            for(int j = i + 1; j < moves.Length; j++) {
+                if(scores[j] > scores[i])
+                    (scores[i], scores[j], moves[i], moves[j]) = (scores[j], scores[i], moves[j], moves[i]);
+            }
+
+            Move move = moves[i];
             board.MakeMove(move);
             int eval = -Search(depth - 1, ply + 1, -beta, -alpha, board, ref thinkmove);
+            board.UndoMove(move);
+            
             if (eval > bestEval){
                 bestEval = eval;
                 bestMove = move;
@@ -249,7 +262,13 @@ public class MyBot : IChessBot
                     thinkmove = move;
                 }
             }
-            board.UndoMove(move);
+
+            alpha = Math.Max(alpha, eval);
+
+            if (alpha >= beta) {
+                return beta;
+            }
+
         }
         return bestEval;
         
@@ -257,7 +276,7 @@ public class MyBot : IChessBot
 
     public Move Think(Board board, Timer timer){ 
         Move thinkmove = Move.NullMove;
-        int eval = Search(3, 0, -10000, 10000, board, ref thinkmove);
+        int eval = Search(6, 0, -10000, 10000, board, ref thinkmove);
         return thinkmove.IsNull ? board.GetLegalMoves()[0]:thinkmove;
     }
 
