@@ -209,28 +209,32 @@ public class MyBot : IChessBot
     }
 
 
-    public int Search(int depth, int ply, int alpha, int beta, Board board, ref Move thinkmove){
+    public int Search(int depth, int ply, int alpha, int beta, Board board, ref Move thinkmove, Timer timer){
+        bool Quiescence_search = depth <= 0;
+        int bestEval = -50000;
+
         // if draw by repetition
         if (ply > 0 && board.IsRepeatedPosition()) {
             return 0;
         }
 
+        int stand_pat = Evaluate(board);
+
+        if(Quiescence_search) {
+            bestEval = stand_pat;
+            if(bestEval >= beta) return bestEval;
+            alpha = Math.Max(alpha, bestEval);
+        }
+
+        Move[] moves = board.GetLegalMoves(Quiescence_search);      
+
+
         // if bottom of search
-        if (depth == 0) {
-            return Evaluate(board);  
-        }
-
-        Move[] moves = board.GetLegalMoves();
-
-        // if checkmate or stalemate
-        if (moves.Length == 0) {
-            if (board.IsInCheck()) {
-                return -10000;
-            }
-            return 0;
-        }
+        // if (depth == 0) {
+        //     return Evaluate(board);  
+        // }
         
-        int bestEval = -9999;
+
         Move bestMove = Move.NullMove;
 
         // Score moves to improve pruning
@@ -242,7 +246,9 @@ public class MyBot : IChessBot
             }
         }
         
-        for(int i = 0; i < moves.Length; i++){;    
+        for(int i = 0; i < moves.Length; i++){
+            // return bad eval to cancel search if time is running out
+            // if(timer.MillisecondsElapsedThisTurn >= timer.MillisecondsRemaining / 30) return 30000;    
             
             // sort moves by captures to promote pruning and reduce the time spent evaluating potentially worse positions
             for(int j = i + 1; j < moves.Length; j++) {
@@ -252,7 +258,7 @@ public class MyBot : IChessBot
 
             Move move = moves[i];
             board.MakeMove(move);
-            int eval = -Search(depth - 1, ply + 1, -beta, -alpha, board, ref thinkmove);
+            int eval = -Search(depth - 1, ply + 1, -beta, -alpha, board, ref thinkmove, timer);
             board.UndoMove(move);
             
             if (eval > bestEval){
@@ -270,13 +276,26 @@ public class MyBot : IChessBot
             }
 
         }
+        
+        // if checkmate or stalemate
+        if (moves.Length == 0 && !Quiescence_search) {
+            if (board.IsInCheck()) {
+                return -50000 + ply;
+            }
+            return 0;
+        }
+
         return bestEval;
         
     }
 
     public Move Think(Board board, Timer timer){ 
         Move thinkmove = Move.NullMove;
-        int eval = Search(6, 0, -10000, 10000, board, ref thinkmove);
+
+
+        int eval = Search(6, 0, -50000, 50000, board, ref thinkmove, timer);
+            
+
         return thinkmove.IsNull ? board.GetLegalMoves()[0]:thinkmove;
     }
 
