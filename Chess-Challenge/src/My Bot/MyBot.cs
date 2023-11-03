@@ -4,15 +4,17 @@ using System;
 
 // Completed - bot stuck in repetition (thinkmove was only being augmented in local space)
 //              still some 50 move rules endings being achieved
-// Completed - need alpha beta pruning (using negmax, achieve near double depth)
-// Completed - need sorting of evaluated moves to speed up alpha beta pruning
+// Completed - alpha beta pruning (using negmax, achieve near double depth)
+// Completed - sorting of evaluated moves to speed up alpha beta pruning
+// Completed - Quiescence search to avoid horizon effect
 
-//- need piece square table for evaluation
-//    - need to encode piece square tables to reduce tokens used
-//    - need to decode the the encoded piece square tables and return values
-//- need transpoistion table to help speed up evaluation of positions and reduce repetition
-//- need iterative deepening
-//- need Quiescence search to avoid horizon effect
+//-  piece square table for evaluation
+    //- to encode piece square tables to reduce tokens used
+    //- to decode the the encoded piece square tables and return values
+//- transpoistion table to help speed up evaluation of positions and reduce repetition
+//- iterative deepening
+    //  - ordering of moves needed to ensure first move evaluated at next depth is best move from previous
+    //    this eliminates the wrong best move being returned if the search is stopped early
 //- end game evaluations to reweight material
 
 
