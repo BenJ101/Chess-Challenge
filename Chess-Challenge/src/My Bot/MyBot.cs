@@ -230,7 +230,7 @@ public class MyBot : IChessBot
             return 0;
         }
         
-        int bestEval = -10000;
+        int bestEval = -9999;
         Move bestMove = Move.NullMove;
 
         // Score moves to improve pruning
